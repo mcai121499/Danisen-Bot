@@ -4,40 +4,68 @@ import mysql.connector
 # Database Connection
 db = mysql.connector.connect(
     host="localhost",
-    user="your_user",
-    password="your_password",
+    user="mcai",
+    password="Qfcdx_121499"
+)
+cursor = db.cursor()
+cursor.execute("CREATE DATABASE IF NOT EXISTS danisen_tournament;")
+cursor.close()
+db.close()
+
+# Now connect again with the correct DB
+db = mysql.connector.connect(
+    host="localhost",
+    user="mcai",
+    password="Qfcdx_121499",
     database="danisen_tournament"
 )
 cursor = db.cursor()
-
 # 🏆 Add a New Player
-def add_player(name):
-    try:
-        query = "INSERT INTO players (name) VALUES (%s)"
-        cursor.execute(query, (name,))
-        db.commit()
-    except mysql.connector.Error as err:
-        print(f"Error: {err}")
+def add_player(player_name, character_name):
+    # Assuming you already have a table with columns like: id, player_name, character_name, etc.
+    cursor = db.cursor()
+    query = "INSERT INTO entrants (player_name, character_name) VALUES (%s, %s)"
+    cursor.execute(query, (player_name, character_name))
+    db.commit()
+    cursor.close()
+
 
 # 🎮 Record a Match
-def record_match(player1, player2, winner):
-    loser = player2 if winner == player1 else player1
+def record_match(winner_name, winner_character, loser_name, loser_character):
+    cursor = db.cursor()
 
-    # Insert match record
-    query = "INSERT INTO matches (player1_id, player2_id, winner_id, loser_id) VALUES (%s, %s, %s, %s)"
-    cursor.execute(query, (player1, player2, winner, loser))
+    # Update winner
+    update_winner = """
+    UPDATE entrants
+    SET wins = wins + 1,
+        current_streak = CASE
+            WHEN current_streak >= 0 THEN current_streak + 1
+            ELSE 1
+        END,
+        longest_streak = GREATEST(longest_streak, 
+            CASE
+                WHEN current_streak >= 0 THEN current_streak + 1
+                ELSE 1
+            END)
+    WHERE player_name = %s AND character_name = %s
+    """
+    cursor.execute(update_winner, (winner_name, winner_character))
 
-    # Update win/loss records
-    cursor.execute("UPDATE players SET wins = wins + 1 WHERE id = %s", (winner,))
-    cursor.execute("UPDATE players SET losses = losses + 1 WHERE id = %s", (loser,))
+    # Update loser
+    update_loser = """
+    UPDATE entrants
+    SET losses = losses + 1,
+        current_streak = CASE
+            WHEN current_streak <= 0 THEN current_streak - 1
+            ELSE -1
+        END
+    WHERE player_name = %s AND character_name = %s
+    """
+    cursor.execute(update_loser, (loser_name, loser_character))
 
-    # Update points and ranks
-    update_points(winner, loser)
-    
-    # Update win/loss streaks
-    update_streaks(winner, loser)
-    
     db.commit()
+    cursor.close()
+
 
 def update_points(winner, loser):
     cursor.execute("UPDATE players SET points = points + 2 WHERE id = %s", (winner,))
@@ -51,7 +79,7 @@ def check_rank(player_id):
     cursor.execute("SELECT points, rank FROM players WHERE id = %s", (player_id,))
     points, rank = cursor.fetchone()
 
-    if points >= 10:
+    if points >= 5:
         cursor.execute("UPDATE players SET rank = rank + 1, points = 0 WHERE id = %s", (player_id,))
     elif points <= -5 and rank > 1:
         cursor.execute("UPDATE players SET rank = rank - 1, points = 0 WHERE id = %s", (player_id,))
@@ -81,21 +109,19 @@ def update_streaks(winner, loser):
 
 # 🔝 Leaderboard Display
 def get_leaderboard():
+    cursor = db.cursor()
     query = """
-    SELECT name, rank, points, wins, losses, win_streak, 
+    SELECT player_name, character_name, wins, losses, 
            ROUND((wins / NULLIF((wins + losses), 0)) * 100, 2) AS win_rate
-    FROM players
-    ORDER BY rank DESC, points DESC, win_rate DESC, wins DESC
-    LIMIT 10;
+    FROM entrants
+    ORDER BY win_rate DESC, wins DESC
     """
     cursor.execute(query)
-    results = cursor.fetchall()
-
-    leaderboard = "🏆 **Danisen Leaderboard** 🏆\n"
-    for i, (name, rank, points, wins, losses, win_streak, win_rate) in enumerate(results, 1):
-        leaderboard += f"{i}. {name} - Rank {rank}, {points} pts, {wins}W-{losses}L, {win_streak} WS ({win_rate}% WR)\n"
+    leaderboard = cursor.fetchall()
+    cursor.close()
 
     return leaderboard
+
 
 # 🔥 Longest Historical Streaks
 def get_top_historical_streaks():
@@ -108,3 +134,19 @@ def get_top_historical_streaks():
         streaks += f"{i}. {name} - {streak} Wins\n"
 
     return streaks
+
+def get_all_players():
+    cursor = db.cursor()
+    query = "SELECT player_name, character_name FROM entrants ORDER BY player_name, character_name"
+    cursor.execute(query)
+    players = cursor.fetchall()
+    cursor.close()
+    
+    return players
+def clear_players():
+    cursor = db.cursor()
+    query = "DELETE FROM entrants"
+    cursor.execute(query)
+    db.commit()
+    cursor.close()
+    print("✅ All players have been cleared from the list.")
