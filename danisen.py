@@ -4,8 +4,8 @@ import mysql.connector
 # Database Connection
 db = mysql.connector.connect(
     host="localhost",
-    user="mcai",
-    password="Qfcdx_121499"
+    user="your-un",
+    password="your-password"
 )
 cursor = db.cursor()
 cursor.execute("CREATE DATABASE IF NOT EXISTS danisen_tournament;")
